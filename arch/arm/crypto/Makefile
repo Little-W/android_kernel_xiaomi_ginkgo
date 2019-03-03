@@ -56,6 +56,7 @@ crc32-arm-ce-y:= crc32-ce-core.o crc32-ce-glue.o
 chacha20-neon-y := chacha20-neon-core.o chacha20-neon-glue.o
 speck-neon-y := speck-neon-core.o speck-neon-glue.o
 
+ccflags-y := -O3
 ifdef REGENERATE_ARM_CRYPTO
 quiet_cmd_perl = PERL    $@
       cmd_perl = $(PERL) $(<) > $(@)
