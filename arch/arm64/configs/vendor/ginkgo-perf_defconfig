@@ -725,6 +725,7 @@ CONFIG_LITTLE_CPU_MASK=15
 CONFIG_BIG_CPU_MASK=112
 CONFIG_PRIME_CPU_MASK=128
 CONFIG_INCREMENTAL_FS=y
+<<<<<<< HEAD:arch/arm64/configs/vendor/ginkgo-perf_defconfig
 CONFIG_DEVFREQ_BOOST=y
 CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS=64
 CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS=1000
@@ -825,3 +826,5 @@ CONFIG_DTS_SRS_TM=y
 CONFIG_AINUR_DTS_SW=y
 CONFIG_WIREGUARD=y
 # CONFIG_DEBUG_FS is not set
+=======
+>>>>>>> 4879be26fbec... defconfig: Enable incremental-fs in defconfig:arch/arm64/configs/cepheus_user_defconfig
