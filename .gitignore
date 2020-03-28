@@ -9,6 +9,14 @@
 #
 # Normal rules (sorted alphabetically)
 #
+kernel.log
+toolchain/bin/*
+toolchain/*
+toolchain
+toolchain/
+out
+out/*
+out/vmlinux
 .*
 *.a
 *.bin
