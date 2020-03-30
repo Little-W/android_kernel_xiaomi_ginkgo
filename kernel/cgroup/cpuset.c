@@ -148,6 +148,7 @@ struct cs_target {
 static struct cpuset *background_cpuset;
 static bool is_busy;
 static struct work_struct bg_work;
+
 static inline struct cpuset *css_cs(struct cgroup_subsys_state *css)
 {
 	return css ? container_of(css, struct cpuset, css) : NULL;
@@ -2105,6 +2106,12 @@ static int cpuset_css_online(struct cgroup_subsys_state *css)
 	cpumask_copy(cs->effective_cpus, parent->cpus_allowed);
 	spin_unlock_irq(&callback_lock);
 out_unlock:
+
+	cgroup_name(css->cgroup, name_buf, sizeof(name_buf));
+
+	if (!strncmp(name_buf, "background", 10))
+		background_cpuset = cs;
+
 	mutex_unlock(&cpuset_mutex);
 	return 0;
 }
@@ -2188,6 +2195,7 @@ struct cgroup_subsys cpuset_cgrp_subsys = {
 };
 
 static void bg_worker(struct work_struct *work);
+
 /**
  * cpuset_init - initialize cpusets at system boot
  *
@@ -2217,6 +2225,8 @@ int __init cpuset_init(void)
 		return err;
 
 	BUG_ON(!alloc_cpumask_var(&cpus_attach, GFP_KERNEL));
+
+	INIT_WORK(&bg_work, bg_worker);
 
 	return 0;
 }
