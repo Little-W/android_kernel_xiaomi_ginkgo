@@ -50,9 +50,9 @@ static unsigned int get_input_boost_freq(struct cpufreq_policy *policy)
 	unsigned int freq;
 
 	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		freq = CONFIG_INPUT_BOOST_FREQ_LP;
+		freq = max(CONFIG_INPUT_BOOST_FREQ_LP, CONFIG_MIN_FREQ_LP);
 	else
-		freq = CONFIG_INPUT_BOOST_FREQ_PERF;
+		freq = max(CONFIG_INPUT_BOOST_FREQ_PERF, CONFIG_MIN_FREQ_PERF);
 
 	return min(freq, policy->max);
 }
@@ -79,12 +79,14 @@ static void update_online_cpu_policy(void)
 	cpufreq_update_policy(cpu);
 	cpu = cpumask_first_and(cpu_perf_mask, cpu_online_mask);
 	cpufreq_update_policy(cpu);
+	cpu = cpumask_first_and(cpu_perfp_mask, cpu_online_mask);
+	cpufreq_update_policy(cpu);
 	put_online_cpus();
 }
 
 static void __cpu_input_boost_kick(struct boost_drv *b)
 {
-	if (test_bit(SCREEN_OFF, &b->state))
+	if (test_bit(SCREEN_OFF, &b->state) || (CONFIG_INPUT_BOOST_DURATION_MS == 0))
 		return;
 
 	set_bit(INPUT_BOOST, &b->state);
