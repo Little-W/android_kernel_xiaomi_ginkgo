@@ -630,11 +630,9 @@ int audio_aio_release(struct inode *inode, struct file *file)
 #ifdef CONFIG_DEBUG_FS
 	debugfs_remove(audio->dentry);
 #endif
-	spin_lock(&enc_dec_lock);
 	kfree(audio->codec_cfg);
 	kfree(audio);
 	file->private_data = NULL;
-	spin_unlock(&enc_dec_lock);
 	mutex_unlock(&lock);
 	return 0;
 }
