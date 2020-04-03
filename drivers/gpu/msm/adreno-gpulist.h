@@ -515,4 +515,20 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.busy_mask = 0xFFFFFFFE,
 		.cx_ipeak_gpu_freq = 900000000,
 	},
+	{
+		.gpurev = ADRENO_REV_A610,
+		.core = 6,
+		.major = 1,
+		.minor = 0,
+		.patchid = ANY_ID,
+		.features = ADRENO_64BIT | ADRENO_PREEMPTION |
+			ADRENO_CONTENT_PROTECTION,
+		.sqefw_name = "a630_sqe.fw",
+		.zap_name = "a610_zap",
+		.gpudev = &adreno_a6xx_gpudev,
+		.gmem_size = (SZ_128K + SZ_4K),
+		.num_protected_regs = 0x20,
+		.busy_mask = 0xFFFFFFFE,
+		.cx_ipeak_gpu_freq = 900000000,
+	},
 };
