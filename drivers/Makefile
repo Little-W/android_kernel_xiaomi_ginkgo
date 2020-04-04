@@ -191,3 +191,5 @@ obj-$(CONFIG_ESOC)              += esoc/
 obj-$(CONFIG_HALLS)		+= halls/
 obj-$(CONFIG_TRUSTY)		+= trusty/
 obj-$(CONFIG_AINUR_DTS_SW) += dts_eagle/
+# GNSS driver
+obj-$(CONFIG_GNSS_SIRF)		+= gnsssirf/
