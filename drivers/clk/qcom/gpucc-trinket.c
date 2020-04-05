@@ -226,7 +226,7 @@ static struct clk_rcg2 gpu_cc_gx_gfx3d_clk_src = {
 			[VDD_NOMINAL] = 745000000,
 			[VDD_NOMINAL_L1] = 820000000,
 			[VDD_HIGH] = 900000000,
-			[VDD_HIGH_L1] = 970000000},
+			[VDD_HIGH_L1] = 950000000},
 	},
 };
 
