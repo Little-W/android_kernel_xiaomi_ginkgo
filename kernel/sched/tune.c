@@ -1,3 +1,4 @@
+#include <linux/binfmts.h>
 #include <linux/cgroup.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
@@ -7,12 +8,20 @@
 #include <linux/slab.h>
 
 #include <trace/events/sched.h>
+#include <linux/list.h>
 
 #include "sched.h"
 #include "tune.h"
 
 bool schedtune_initialized = false;
 extern struct reciprocal_value schedtune_spc_rdiv;
+
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+static DEFINE_MUTEX(stune_boost_mutex);
+static struct schedtune *getSchedtune(char *st_name);
+static int dynamic_boost(struct schedtune *st, int boost);
+#endif /* CONFIG_DYNAMIC_STUNE_BOOST */
+
 
 /* We hold schedtune boost in effect for at least this long */
 #define SCHEDTUNE_BOOST_HOLD_NS 50000000ULL
@@ -56,10 +65,17 @@ struct schedtune {
 	/* Hint to bias scheduling of tasks on that SchedTune CGroup
 	 * towards idle CPUs */
 	int prefer_idle;
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	/*
+	 * This tracks the default boost value and is used to restore
+	 * the value when Dynamic SchedTune Boost is reset.
+	 */
+	int boost_default;
 
-	/* Hint to bias scheduling of tasks on that SchedTune CGroup
-	 * towards higher capacity CPUs */
-	bool prefer_high_cap;
+	int boost_cur;
+	bool is_boosting;
+	struct work_struct dsb_work;
+#endif /* CONFIG_DYNAMIC_STUNE_BOOST */
 };
 
 static inline struct schedtune *css_st(struct cgroup_subsys_state *css)
@@ -86,8 +102,9 @@ static inline struct schedtune *parent_st(struct schedtune *st)
  * By default, system-wide boosting is disabled, i.e. no boosting is applied
  * to tasks which are not into a child control group.
  */
-static struct schedtune root_schedtune = {
-	.boost = 0,
+static struct schedtune
+root_schedtune = {
+	.boost	= 0,
 #ifdef CONFIG_SCHED_WALT
 	.sched_boost_no_override = false,
 	.sched_boost_enabled = true,
@@ -95,7 +112,11 @@ static struct schedtune root_schedtune = {
 	.colocate_update_disabled = false,
 #endif
 	.prefer_idle = 0,
-	.prefer_high_cap = false,
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	.boost_default = 0,
+	.boost_cur = 0,
+	.is_boosting = false,
+#endif /* CONFIG_DYNAMIC_STUNE_BOOST */
 };
 
 /*
@@ -109,7 +130,7 @@ static struct schedtune root_schedtune = {
  *    implementation especially for the computation of the per-CPU boost
  *    value
  */
-#define BOOSTGROUPS_COUNT 8
+#define BOOSTGROUPS_COUNT 6
 
 /* Array of configured boostgroups */
 static struct schedtune *allocated_group[BOOSTGROUPS_COUNT] = {
@@ -188,9 +209,18 @@ void restore_cgroup_boost_settings(void)
 
 bool task_sched_boost(struct task_struct *p)
 {
-	struct schedtune *st = task_schedtune(p);
+	struct schedtune *st;
+	bool enabled;
 
-	return st->sched_boost_enabled;
+	if (unlikely(!schedtune_initialized))
+		return false;
+
+	rcu_read_lock();
+	st = task_schedtune(p);
+	enabled = st->sched_boost_enabled;
+	rcu_read_unlock();
+
+	return enabled;
 }
 
 static u64
@@ -583,7 +613,7 @@ prefer_idle_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	    u64 prefer_idle)
 {
 	struct schedtune *st = css_st(css);
-	st->prefer_idle = !!prefer_idle;
+	st->prefer_idle = prefer_idle;
 
 	return 0;
 }
@@ -629,6 +659,9 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 		return -EINVAL;
 
 	st->boost = boost;
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	st->boost_default = boost;
+#endif /* CONFIG_DYNAMIC_STUNE_BOOST */
 
 	/* Update CPU boost */
 	schedtune_boostgroup_update(st->idx, st->boost);
@@ -636,40 +669,46 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	return 0;
 }
 
-int schedtune_prefer_high_cap(struct task_struct *p)
-{
-	struct schedtune *st;
-	int prefer_high_cap;
 
-	if (unlikely(!schedtune_initialized))
+#ifdef CONFIG_STUNE_ASSIST
+#ifdef CONFIG_SCHED_WALT
+static int sched_boost_override_write_wrapper(struct cgroup_subsys_state *css,
+					      struct cftype *cft, u64 override)
+{
+	if (task_is_booster(current))
 		return 0;
 
-	/* Get prefer_high_cap value */
-	rcu_read_lock();
-	st = task_schedtune(p);
-	prefer_high_cap = st->prefer_high_cap;
-	rcu_read_unlock();
-
-	return prefer_high_cap;
+	return sched_boost_override_write(css, cft, override);
 }
 
-static u64 prefer_high_cap_read(struct cgroup_subsys_state *css,
-				struct cftype *cft)
+static int sched_colocate_write_wrapper(struct cgroup_subsys_state *css,
+					struct cftype *cft, u64 colocate)
 {
-	struct schedtune *st = css_st(css);
+	if (task_is_booster(current))
+		return 0;
 
-	return st->prefer_high_cap;
+	return sched_colocate_write(css, cft, colocate);
 }
+#endif
 
-static int prefer_high_cap_write(struct cgroup_subsys_state *css,
-				 struct cftype *cft, u64 prefer_high_cap)
+static int boost_write_wrapper(struct cgroup_subsys_state *css,
+			       struct cftype *cft, s64 boost)
 {
-	struct schedtune *st = css_st(css);
-	st->prefer_high_cap = !!prefer_high_cap;
+	if (task_is_booster(current))
+		return 0;
 
-	return 0;
+	return boost_write(css, cft, boost);
 }
 
+static int prefer_idle_write_wrapper(struct cgroup_subsys_state *css,
+				     struct cftype *cft, u64 prefer_idle)
+{
+	if (task_is_booster(current))
+		return 0;
+
+	return prefer_idle_write(css, cft, prefer_idle);
+}
+#endif
 static struct cftype files[] = {
 #ifdef CONFIG_SCHED_WALT
 	{
@@ -693,12 +732,7 @@ static struct cftype files[] = {
 		.read_u64 = prefer_idle_read,
 		.write_u64 = prefer_idle_write,
 	},
-	{
-		.name = "prefer_high_cap",
-		.read_u64 = prefer_high_cap_read,
-		.write_u64 = prefer_high_cap_write,
-	},
-	{} /* terminate */
+	{ }	/* terminate */
 };
 
 static int
@@ -720,6 +754,45 @@ schedtune_boostgroup_init(struct schedtune *st)
 
 	return 0;
 }
+
+#ifdef CONFIG_STUNE_ASSIST
+struct st_data {
+	char *name;
+	int boost;
+	bool prefer_idle;
+	bool colocate;
+	bool no_override;
+};
+
+static void write_default_values(struct cgroup_subsys_state *css)
+{
+	static struct st_data st_targets[] = {
+		{ "audio-app",	0, 0, 0, 0 },
+		{ "background",	0, 0, 0, 0 },
+		{ "foreground",	5, 1, 0, 1 },
+		{ "rt",		0, 0, 0, 0 },
+		{ "top-app",	10, 1, 0, 1 },
+	};
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(st_targets); i++) {
+		struct st_data tgt = st_targets[i];
+
+		if (!strcmp(css->cgroup->kn->name, tgt.name)) {
+			pr_info("stune_assist: setting values for %s: boost=%d prefer_idle=%d colocate=%d no_override=%d\n",
+				tgt.name, tgt.boost, tgt.prefer_idle,
+				tgt.colocate, tgt.no_override);
+
+			boost_write(css, NULL, tgt.boost);
+			prefer_idle_write(css, NULL, tgt.prefer_idle);
+#ifdef CONFIG_SCHED_WALT
+			sched_colocate_write(css, NULL, tgt.colocate);
+			sched_boost_override_write(css, NULL, tgt.no_override);
+#endif
+		}
+	}
+}
+#endif
 
 static struct cgroup_subsys_state *
 schedtune_css_alloc(struct cgroup_subsys_state *parent_css)
@@ -812,6 +885,103 @@ schedtune_init_cgroups(void)
 	schedtune_initialized = true;
 }
 
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+static struct schedtune *getSchedtune(char *st_name)
+{
+	int idx;
+
+	for (idx = 1; idx < BOOSTGROUPS_COUNT; ++idx) {
+		char name_buf[NAME_MAX + 1];
+		struct schedtune *st = allocated_group[idx];
+
+		if (!st) {
+			pr_warn("SCHEDTUNE: Could not find %s\n", st_name);
+			break;
+		}
+
+		cgroup_name(st->css.cgroup, name_buf, sizeof(name_buf));
+		if (strncmp(name_buf, st_name, strlen(st_name)) == 0)
+			return st;
+	}
+
+	return NULL;
+}
+
+static int dynamic_boost(struct schedtune *st, int boost)
+{
+	int ret;
+	/* Backup boost_default */
+	int boost_default_backup = st->boost_default;
+
+	ret = boost_write(&st->css, NULL, boost);
+
+	/* Restore boost_default */
+	st->boost_default = boost_default_backup;
+
+	return ret;
+}
+
+static int _do_stune_boost(struct schedtune *st)
+{
+	int ret = 0;
+
+	mutex_lock(&stune_boost_mutex);
+
+	/* Boost if new value is greater than current */
+	if (st->boost_cur > st->boost)
+		ret = dynamic_boost(st, st->boost_cur);
+
+	mutex_unlock(&stune_boost_mutex);
+
+	return ret;
+}
+
+static int _reset_stune_boost(struct schedtune *st)
+{
+	int ret = 0;
+
+	mutex_lock(&stune_boost_mutex);
+	ret = dynamic_boost(st, st->boost_default);
+	mutex_unlock(&stune_boost_mutex);
+
+	return ret;
+}
+
+static void dsb_worker(struct work_struct *work)
+{
+	struct schedtune *st = container_of(work, struct schedtune, dsb_work);
+	
+	if(st->is_boosting)
+		_do_stune_boost(st);
+	else
+		_reset_stune_boost(st);
+
+}
+
+void reset_stune_boost(char *st_name)
+{
+	struct schedtune *st = getSchedtune(st_name);
+
+	if (likely(st->is_boosting) && likely(st)) {
+		st->is_boosting = false;
+
+		schedule_work(&st->dsb_work);
+	}
+}
+
+void do_stune_boost(char *st_name, int boost)
+{
+	struct schedtune *st = getSchedtune(st_name);
+
+	if (likely(!st->is_boosting) && likely(st)) {
+		st->boost_cur = boost;
+		st->is_boosting = true;
+
+		schedule_work(&st->dsb_work);
+	}
+}
+
+#endif /* CONFIG_DYNAMIC_STUNE_BOOST */
 /*
  * Initialize the cgroup structures
  */

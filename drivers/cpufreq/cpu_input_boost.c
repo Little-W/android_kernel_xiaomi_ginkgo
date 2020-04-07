@@ -7,11 +7,15 @@
 
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/cpu.h>
+#include <linux/sched.h>
 #include <linux/msm_drm_notify.h>
 #include <linux/input.h>
 #include <linux/kthread.h>
 #include <linux/version.h>
+#include <linux/boost_control.h>
 #include <linux/slab.h>
+
 
 /* The sched_param struct is located elsewhere in newer kernels */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
@@ -48,11 +52,17 @@ static struct boost_drv boost_drv_g __read_mostly = {
 static unsigned int get_input_boost_freq(struct cpufreq_policy *policy)
 {
 	unsigned int freq;
-
+	#if CONFIG_BOOST_CONTROL
+	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+		freq = input_boost_freq_lp;
+	else
+		freq = input_boost_freq_perf;
+	#else
 	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
 		freq = max(CONFIG_INPUT_BOOST_FREQ_LP, CONFIG_MIN_FREQ_LP);
 	else
 		freq = max(CONFIG_INPUT_BOOST_FREQ_PERF, CONFIG_MIN_FREQ_PERF);
+	#endif
 
 	return min(freq, policy->max);
 }
@@ -79,15 +89,20 @@ static void update_online_cpu_policy(void)
 	cpufreq_update_policy(cpu);
 	cpu = cpumask_first_and(cpu_perf_mask, cpu_online_mask);
 	cpufreq_update_policy(cpu);
+	cpu = cpumask_first_and(cpu_perfp_mask, cpu_online_mask);
+	cpufreq_update_policy(cpu);
 	put_online_cpus();
 }
 
 static void __cpu_input_boost_kick(struct boost_drv *b)
 {
-	if (test_bit(SCREEN_OFF, &b->state))
+	if (test_bit(SCREEN_OFF, &b->state) || (CONFIG_INPUT_BOOST_DURATION_MS == 0))
 		return;
 
 	set_bit(INPUT_BOOST, &b->state);
+	#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	do_stune_boost("top-app", dynamic_stune_boost);
+	#endif
 	if (!mod_delayed_work(system_unbound_wq, &b->input_unboost,
 			      msecs_to_jiffies(CONFIG_INPUT_BOOST_DURATION_MS)))
 		wake_up(&b->boost_waitq);
@@ -128,7 +143,9 @@ static void __cpu_input_boost_kick_max(struct boost_drv *b,
 void cpu_input_boost_kick_max(unsigned int duration_ms)
 {
 	struct boost_drv *b = &boost_drv_g;
-
+	#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	do_stune_boost("top-app", dynamic_stune_boost);
+	#endif
 	__cpu_input_boost_kick_max(b, duration_ms);
 }
 
@@ -139,7 +156,11 @@ static void input_unboost_worker(struct work_struct *work)
 
 	clear_bit(INPUT_BOOST, &b->state);
 	wake_up(&b->boost_waitq);
+	#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	reset_stune_boost("top-app");
+	#endif
 }
+
 
 static void max_unboost_worker(struct work_struct *work)
 {
@@ -148,6 +169,9 @@ static void max_unboost_worker(struct work_struct *work)
 
 	clear_bit(MAX_BOOST, &b->state);
 	wake_up(&b->boost_waitq);
+	#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	reset_stune_boost("top-app");
+	#endif
 }
 
 static int cpu_boost_thread(void *data)
@@ -227,7 +251,11 @@ static int msm_drm_notifier_cb(struct notifier_block *nb, unsigned long action,
 	/* Boost when the screen turns on and unboost when it turns off */
 	if (*blank == MSM_DRM_BLANK_UNBLANK) {
 		clear_bit(SCREEN_OFF, &b->state);
+		#if CONFIG_BOOST_CONTROL
+		__cpu_input_boost_kick_max(b, wake_boost_duration);
+		#else
 		__cpu_input_boost_kick_max(b, CONFIG_WAKE_BOOST_DURATION_MS);
+		#endif
 	} else {
 		set_bit(SCREEN_OFF, &b->state);
 		wake_up(&b->boost_waitq);
@@ -240,8 +268,6 @@ static void cpu_input_boost_input_event(struct input_handle *handle,
 					unsigned int type, unsigned int code,
 					int value)
 {
-	return;
-
 	struct boost_drv *b = handle->handler->private;
 
 	__cpu_input_boost_kick(b);
@@ -281,6 +307,9 @@ free_handle:
 
 static void cpu_input_boost_input_disconnect(struct input_handle *handle)
 {
+	#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	reset_stune_boost("top-app");
+	#endif
 	input_close_device(handle);
 	input_unregister_handle(handle);
 	kfree(handle);
@@ -348,7 +377,7 @@ static int __init cpu_input_boost_init(void)
 		goto unregister_handler;
 	}
 
-	thread = kthread_run_perf_critical(cpu_boost_thread, b, "cpu_boostd");
+	thread = kthread_run(cpu_boost_thread, b, "cpu_boostd");
 	if (IS_ERR(thread)) {
 		ret = PTR_ERR(thread);
 		pr_err("Failed to start CPU boost thread, err: %d\n", ret);
