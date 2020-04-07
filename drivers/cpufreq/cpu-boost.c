@@ -22,7 +22,12 @@
 #include <linux/moduleparam.h>
 #include <linux/slab.h>
 #include <linux/input.h>
+#include <linux/boost_control.h>
+#include <linux/cpuset.h>
 #include <linux/time.h>
+#include <uapi/linux/sched/types.h>
+
+#include <linux/sched/rt.h>
 
 struct cpu_sync {
 	int cpu;
@@ -57,6 +62,8 @@ static bool sched_boost_on_powerkey_input = true;
 module_param(sched_boost_on_powerkey_input, bool, 0644);
 
 static bool sched_boost_active;
+
+do_busy_bg_cpuset();
 
 static struct delayed_work input_boost_rem;
 static u64 last_input_time;
@@ -229,17 +236,21 @@ static void do_input_boost_rem(struct work_struct *work)
 		sched_boost_active = false;
 	}
 }
-
+do_busy_bg_cpuset();
 static void do_input_boost(struct work_struct *work)
 {
 	unsigned int i, ret;
 	struct cpu_sync *i_sync_info;
+
+do_busy_bg_cpuset();
 
 	cancel_delayed_work_sync(&input_boost_rem);
 	if (sched_boost_active) {
 		sched_set_boost(0);
 		sched_boost_active = false;
 	}
+
+do_busy_bg_cpuset();
 
 	/* Set the input_boost_min for all CPUs in the system */
 	pr_debug("Setting input boost min for all CPUs\n");
@@ -259,6 +270,8 @@ static void do_input_boost(struct work_struct *work)
 		else
 			sched_boost_active = true;
 	}
+
+do_busy_bg_cpuset();
 
 	queue_delayed_work(cpu_boost_wq, &input_boost_rem,
 					msecs_to_jiffies(input_boost_ms));
@@ -354,6 +367,8 @@ err2:
 
 static void cpuboost_input_disconnect(struct input_handle *handle)
 {
+do_busy_bg_cpuset();
+
 	input_close_device(handle);
 	input_unregister_handle(handle);
 	kfree(handle);
