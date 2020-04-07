@@ -22,6 +22,8 @@
 #include <linux/moduleparam.h>
 #include <linux/slab.h>
 #include <linux/input.h>
+#include <linux/boost_control.h>
+#include <linux/cpuset.h>
 #include <linux/time.h>
 
 struct cpu_sync {
@@ -56,6 +58,8 @@ static bool sched_boost_on_powerkey_input = true;
 module_param(sched_boost_on_powerkey_input, bool, 0644);
 
 static bool sched_boost_active;
+
+do_busy_bg_cpuset();
 
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 static int dynamic_stune_boost = 10;
@@ -239,7 +243,7 @@ static void do_input_boost_rem(struct work_struct *work)
 		sched_boost_active = false;
 	}
 }
-
+do_busy_bg_cpuset();
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 static void do_dynamic_stune_boost_rem(struct work_struct *work)
 {
@@ -256,6 +260,8 @@ static void do_input_boost(struct work_struct *work)
 	unsigned int i, ret;
 	struct cpu_sync *i_sync_info;
 
+do_busy_bg_cpuset();
+
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	cancel_delayed_work_sync(&dynamic_stune_boost_rem);
 #endif /* CONFIG_DYNAMIC_STUNE_BOOST */
@@ -264,6 +270,8 @@ static void do_input_boost(struct work_struct *work)
 		sched_set_boost(0);
 		sched_boost_active = false;
 	}
+
+do_busy_bg_cpuset();
 
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	if (stune_boost_active) {
@@ -290,6 +298,8 @@ static void do_input_boost(struct work_struct *work)
 		else
 			sched_boost_active = true;
 	}
+
+do_busy_bg_cpuset();
 
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	/* Set dynamic stune boost value */
@@ -396,6 +406,8 @@ err2:
 
 static void cpuboost_input_disconnect(struct input_handle *handle)
 {
+do_busy_bg_cpuset();
+
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	/* Reset dynamic stune boost value to the default value */
 	reset_stune_boost("top-app", boost_slot);
