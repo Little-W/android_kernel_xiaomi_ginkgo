@@ -719,6 +719,7 @@ static int parse_dt(struct device *dev, struct synaptics_dsx_board_data *bdata)
 		config_info++;
 	};
 
+	dump_dt(dev, bdata);
 	return 0;
 }
 #endif

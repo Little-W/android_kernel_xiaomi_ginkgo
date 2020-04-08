@@ -15,9 +15,9 @@ source "drivers/input/touchscreen/nt36xxx_spi_c3j/Kconfig"
 
 source "drivers/input/touchscreen/ft8719_spi_c3j/Kconfig"
 
-config TOUCHSCREEN_XIAOMI_C3J
-	depends on SPI
-		support for the built-in touchscreen.
+source "drivers/input/touchscreen/xiaomi/Kconfig"
+
+	depends on TOUCHSCREEN_ST_FTS_V521 || TOUCHSCREEN_SYNAPTICS_DSX_FORCE
 config I2C_BY_DMA
 	bool "I2C BY DMA"
 
