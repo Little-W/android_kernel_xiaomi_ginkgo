@@ -22,6 +22,9 @@
 
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
+#ifdef CONFIG_KLAPSE
+#include <linux/klapse.h>
+#endif
 #include "dsi_parser.h"
 
 char g_lcd_id[128];
@@ -741,6 +744,9 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		pr_err("Backlight type(%d) not supported\n", bl->type);
 		rc = -ENOTSUPP;
 	}
+#ifdef CONFIG_KLAPSE
+	set_rgb_slider(bl_lvl);
+#endif
 
 	return rc;
 }
@@ -906,6 +912,7 @@ static int dsi_panel_parse_timing(struct dsi_mode_info *mode,
 		       rc);
 		goto error;
 	}
+	mode->refresh_rate=71;
 
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-panel-width",
 				  &mode->h_active);
