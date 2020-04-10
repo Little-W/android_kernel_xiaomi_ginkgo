@@ -43,7 +43,15 @@
 #include <linux/platform_device.h>
 #include <linux/input/synaptics_dsx.h>
 #include "synaptics_dsx_core.h"
+#ifdef CONFIG_WAKE_GESTURES
+#include <linux/wake_gestures.h>
 #include "linux/moduleparam.h"
+static bool suspended = false;
+bool scr_suspended(void)
+{
+	return suspended;
+}
+#endif
 
 #define SYN_I2C_RETRY_TIMES 10
 #define rd_msgs  1
