@@ -24,7 +24,7 @@
 
 #include "power.h"
 
-
+#include <linux/wakeup_reason.h> /*Add-HMI_M516_A01-51*/
 #ifdef CONFIG_BOEFFLA_WL_BLOCKER
 #include "boeffla_wl_blocker.h"
 
