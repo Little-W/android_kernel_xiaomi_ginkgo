@@ -78,6 +78,7 @@ static inline bool has_target(void)
 }
 
 /* internal prototypes */
+
 static unsigned int __cpufreq_get(struct cpufreq_policy *policy);
 static int cpufreq_init_governor(struct cpufreq_policy *policy);
 static void cpufreq_exit_governor(struct cpufreq_policy *policy);
@@ -2047,6 +2048,7 @@ __weak struct cpufreq_governor *cpufreq_fallback_governor(void)
 }
 
 static int cpufreq_init_governor(struct cpufreq_policy *policy)
+
 {
 	int ret;
 
@@ -2460,8 +2462,8 @@ int trigger_cpufreq_underclock(void)
 	pr_info("Triggered cpu underclock\n");
 	for_each_policy(policy) {
 		cpufreq_underclock_set(cpufreq_underclock_check_cluster(policy->cpu),policy,true);
-		__cpufreq_governor(policy, CPUFREQ_GOV_STOP);
-		__cpufreq_governor(policy, CPUFREQ_GOV_START);
+		cpufreq_stop_governor(policy);
+		cpufreq_start_governor(policy);
 		
 	}
 	underclocked=true;
@@ -2474,8 +2476,8 @@ int resume_cpufreq_underclock(void)
 	pr_info("Resumed cpu underclock\n");
 	for_each_policy(policy) {
 		cpufreq_underclock_set(cpufreq_underclock_check_cluster(policy->cpu),policy,false);
-		__cpufreq_governor(policy, CPUFREQ_GOV_STOP);
-		__cpufreq_governor(policy, CPUFREQ_GOV_START);
+		cpufreq_stop_governor(policy);
+		cpufreq_start_governor(policy);
 		
 	}
 	underclocked=false;
