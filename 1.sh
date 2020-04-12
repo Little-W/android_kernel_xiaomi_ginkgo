@@ -1,6 +1,8 @@
 mkdir out
 export ARCH=arm64
 export SUBARCH=arm64
+export KBUILD_BUILD_USER="今日も笑で進めるぞい！"
+export KBUILD_BUILD_HOST="Litttle-W <1405481963@qq.com>"
 export DTC_EXT=dtc
 export PATH=${PWD}/toolchain/bin:$PATH 
 export LD_LIBRARY_PATH=${PWD}/toolchain/lib:$LD_LIBRARY_PATH 
