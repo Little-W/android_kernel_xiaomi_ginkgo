@@ -2,8 +2,8 @@
  * drivers/input/touchscreen/wake_gestures.c
  *
  *
- * Copyright (c) 2013 Dennis Rassmann <showp1984@gmail.com>
- * Copyright (c) 2013-19 Aaron Segaert <asegaert@gmail.com>
+ * Copyright (c) 2013, Dennis Rassmann <showp1984@gmail.com>
+ * Copyright (c) 2013-18 Aaron Segaert <asegaert@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@
 #include <linux/workqueue.h>
 #include <linux/input.h>
 #include <linux/hrtimer.h>
+#include <asm-generic/cputime.h>
 
 /* Tunables */
 #define WG_DEBUG		0
@@ -38,38 +39,39 @@
 #define DT2W_DEFAULT		0
 #define S2W_DEFAULT		0
 #define S2S_DEFAULT		0
-#define WG_PWRKEY_DUR		60
+#define WG_PWRKEY_DUR           60
 
-/* 7 PRO */
-#define SWEEP_Y_MAX		3120
-#define SWEEP_X_MAX		1440
-#define SWEEP_EDGE		130
-#define SWEEP_Y_LIMIT		SWEEP_Y_MAX-SWEEP_EDGE
-#define SWEEP_X_LIMIT		SWEEP_X_MAX-SWEEP_EDGE
-#define SWEEP_X_B1		480
-#define SWEEP_X_B2		940
+/* Crosshatch */
+#define SWEEP_Y_MAX             2160
+#define SWEEP_X_MAX             1080
+#define SWEEP_EDGE		120
+#define SWEEP_Y_LIMIT           SWEEP_Y_MAX-SWEEP_EDGE
+#define SWEEP_X_LIMIT           SWEEP_X_MAX-SWEEP_EDGE
+#define SWEEP_X_B1              480
+#define SWEEP_X_B2              940
 #define SWEEP_X_START		720
-#define SWEEP_X_FINAL		360
-#define SWEEP_Y_START		1000
-#define SWEEP_Y_NEXT		260
+#define SWEEP_X_FINAL           360
+#define SWEEP_Y_START		1066
+#define SWEEP_Y_NEXT            300
 #define DT2W_FEATHER		200
-#define DT2W_TIME		500
+#define DT2W_TIME 		500
 
-/* 7 */
-#define SWEEP_Y_MAX_OP7		2340
-#define SWEEP_X_MAX_OP7		1080
-#define SWEEP_EDGE_OP7		90
-#define SWEEP_Y_LIMIT_OP7	SWEEP_Y_MAX_OP7-SWEEP_EDGE_OP7
-#define SWEEP_X_LIMIT_OP7	SWEEP_X_MAX_OP7-SWEEP_EDGE_OP7
-#define SWEEP_X_B1_OP7		350
-#define SWEEP_X_B2_OP7		600
-#define SWEEP_Y_START_OP7	800
-#define SWEEP_X_START_OP7	530
-#define SWEEP_X_FINAL_OP7	260
-#define SWEEP_Y_NEXT_OP7	150
+/* Blueline */
+#define SWEEP_Y_MAX_BLUELINE	2160
+#define SWEEP_X_MAX_BLUELINE	1060
+#define SWEEP_EDGE_BLUELINE	90
+#define SWEEP_Y_LIMIT_BLUELINE	SWEEP_Y_MAX_BLUELINE-SWEEP_EDGE_BLUELINE
+#define SWEEP_X_LIMIT_BLUELINE	SWEEP_X_MAX_BLUELINE-SWEEP_EDGE_BLUELINE
+#define SWEEP_X_B1_BLUELINE	350
+#define SWEEP_X_B2_BLUELINE	600
+#define SWEEP_Y_START_BLUELINE	800
+#define SWEEP_X_START_BLUELINE	530
+#define SWEEP_X_FINAL_BLUELINE	260
+#define SWEEP_Y_NEXT_BLUELINE	150
+
 
 /* Wake Gestures */
-#define SWEEP_TIMEOUT		320
+#define SWEEP_TIMEOUT		300
 #define TRIGGER_TIMEOUT		500
 #define WAKE_GESTURE		0x0b
 #define SWEEP_RIGHT		0x01
@@ -77,16 +79,12 @@
 #define SWEEP_UP		0x04
 #define SWEEP_DOWN		0x08
 
-#define WAKE_GESTURES_ENABLED	1
-
 #define LOGTAG			"WG"
-#define OP7PRO			1
-#define OP7			2
+#define BLUELINE		1
+#define CROSSHATCH		2
 
-#if (WAKE_GESTURES_ENABLED)
 int gestures_switch = WG_DEFAULT;
 static struct input_dev *gesture_dev;
-#endif
 
 /* Resources */
 static int s2w_switch = S2W_DEFAULT;
@@ -127,33 +125,35 @@ static struct work_struct s2w_input_work;
 static struct work_struct dt2w_input_work;
 
 //get hardware type
-static int hw_version = OP7PRO;
+static int hw_version = CROSSHATCH;
 static int __init get_model(char *cmdline_model)
 {
-	if (strstr(cmdline_model, "18857")) {
-		sweep_y_limit = SWEEP_Y_LIMIT_OP7;
-		sweep_x_limit = SWEEP_X_LIMIT_OP7;
-		sweep_x_b1 = SWEEP_X_B1_OP7;
-		sweep_x_b2 = SWEEP_X_B2_OP7;
-		sweep_y_start = SWEEP_Y_START_OP7;
-		sweep_x_start = SWEEP_X_START_OP7;
-		sweep_x_final = SWEEP_X_FINAL_OP7;
-		sweep_y_next = SWEEP_Y_NEXT_OP7;
-		sweep_x_max = SWEEP_X_MAX_OP7;
-		sweep_edge = SWEEP_EDGE_OP7;
-		hw_version = OP7;
+	if (strstr(cmdline_model, "blueline")) {
+		sweep_y_limit = SWEEP_Y_LIMIT_BLUELINE;
+		sweep_x_limit = SWEEP_X_LIMIT_BLUELINE;
+		sweep_x_b1 = SWEEP_X_B1_BLUELINE;
+		sweep_x_b2 = SWEEP_X_B2_BLUELINE;
+		sweep_y_start = SWEEP_Y_START_BLUELINE;
+		sweep_x_start = SWEEP_X_START_BLUELINE;
+		sweep_x_final = SWEEP_X_FINAL_BLUELINE;
+		sweep_y_next = SWEEP_Y_NEXT_BLUELINE;
+		sweep_x_max = SWEEP_X_MAX_BLUELINE;
+		sweep_edge = SWEEP_EDGE_BLUELINE;
+		hw_version = BLUELINE;
 	}
 	return 0;
 }
-__setup("androidboot.project_name=", get_model);
+__setup("androidboot.hardware=", get_model);
 
 static bool is_suspended(void)
 {
-	return scr_suspended();
+	if (hw_version == BLUELINE)
+		return scr_suspended_blueline();
+	else
+		return scr_suspended();
 }
 
 /* Wake Gestures */
-#if (WAKE_GESTURES_ENABLED)
 static void report_gesture(int gest)
 {
 	pwrtrigger_time[1] = pwrtrigger_time[0];
@@ -165,15 +165,11 @@ static void report_gesture(int gest)
 	input_report_rel(gesture_dev, WAKE_GESTURE, gest);
 	input_sync(gesture_dev);
 }
-#endif
 
 /* PowerKey work func */
 static void wake_presspwr(struct work_struct * wake_presspwr_work) {
 	if (!mutex_trylock(&pwrkeyworklock))
 		return;
-
-	if ((wake_vibrate && is_suspended()) ||
-		(sleep_vibrate && !is_suspended()))
 
 	input_event(wake_dev, EV_KEY, KEY_POWER, 1);
 	input_event(wake_dev, EV_SYN, 0, 0);
@@ -182,6 +178,10 @@ static void wake_presspwr(struct work_struct * wake_presspwr_work) {
 	input_event(wake_dev, EV_SYN, 0, 0);
 	msleep(WG_PWRKEY_DUR);
 	mutex_unlock(&pwrkeyworklock);
+
+	if ((wake_vibrate && is_suspended()) ||
+		(sleep_vibrate && !is_suspended()))
+		set_vibrate();
 
 	return;
 }
@@ -259,15 +259,11 @@ static void detect_doubletap2wake(int x, int y, bool st)
 		}
 		if ((touch_nr > 1)) {
 			exec_count = false;
-#if (WAKE_GESTURES_ENABLED)
 			if (gestures_switch) {
 				report_gesture(5);
 			} else {
-#endif
 				wake_pwrtrigger();
-#if (WAKE_GESTURES_ENABLED)
 			}
-#endif
 			doubletap2wake_reset();
 		}
 	}
@@ -320,15 +316,11 @@ static void detect_sweep2wake_v(int x, int y, bool st)
 				if (y < prevy) {
 					if (y < (nexty - sweep_y_next)) {
 						if (exec_county && (ktime_to_ms(ktime_get()) - firsty_time < SWEEP_TIMEOUT)) {
-#if (WAKE_GESTURES_ENABLED)
 							if (gestures_switch) {
 								report_gesture(3);
 							} else {
-#endif
 								wake_pwrtrigger();
-#if (WAKE_GESTURES_ENABLED)
 							}		
-#endif								
 							exec_county = false;
 						}
 					}
@@ -349,15 +341,11 @@ static void detect_sweep2wake_v(int x, int y, bool st)
 				if (y > prevy) {
 					if (y > (nexty + sweep_y_next)) {
 						if (exec_county && (ktime_to_ms(ktime_get()) - firsty_time < SWEEP_TIMEOUT)) {
-#if (WAKE_GESTURES_ENABLED)
 							if (gestures_switch) {
 								report_gesture(4);
 							} else {
-#endif
 								wake_pwrtrigger();
-#if (WAKE_GESTURES_ENABLED)
 							}								
-#endif
 							exec_county = false;
 						}
 					}
@@ -409,15 +397,11 @@ static void detect_sweep2wake_h(int x, int y, bool st, bool scr_suspended)
 				if (x > prevx) {
 					if (x > (sweep_x_max - sweep_x_final)) {
 						if (exec_countx && (ktime_to_ms(ktime_get()) - firstx_time < SWEEP_TIMEOUT)) {
-#if (WAKE_GESTURES_ENABLED)
 							if (gestures_switch && scr_suspended) {
 								report_gesture(1);
 							} else {
-#endif
 								wake_pwrtrigger();
-#if (WAKE_GESTURES_ENABLED)
 							}
-#endif							
 							exec_countx = false;
 						}
 					}
@@ -442,15 +426,11 @@ static void detect_sweep2wake_h(int x, int y, bool st, bool scr_suspended)
 				if (x < prevx) {
 					if (x < sweep_x_final) {
 						if (exec_countx) {
-#if (WAKE_GESTURES_ENABLED)
 							if (gestures_switch && scr_suspended) {
 								report_gesture(2);
 							} else {
-#endif
 								wake_pwrtrigger();
-#if (WAKE_GESTURES_ENABLED)
 							}		
-#endif							
 							exec_countx = false;
 						}
 					}
@@ -527,7 +507,9 @@ static void wg_input_event(struct input_handle *handle, unsigned int type,
 }
 
 static int input_dev_filter(struct input_dev *dev) {
-	if (strstr(dev->name, "touchpanel")) {
+	if (strstr(dev->name, "sec_touchscreen")) {
+		return 0;
+	} else if (strstr(dev->name, "fts")) {
 		return 0;
 	} else {
 		return 1;
@@ -781,8 +763,6 @@ static int __init wake_gestures_init(void)
 {
 	int rc = 0;
 
-	pr_info("start wake gestures\n");
-
 	wake_dev = input_allocate_device();
 	if (!wake_dev) {
 		pr_err("Failed to allocate wake_dev\n");
@@ -817,7 +797,6 @@ static int __init wake_gestures_init(void)
 	}
 	INIT_WORK(&dt2w_input_work, dt2w_input_callback);
 		
-#if (WAKE_GESTURES_ENABLED)
 	gesture_dev = input_allocate_device();
 	if (!gesture_dev) {
 		pr_err("Failed to allocate gesture_dev\n");
@@ -833,20 +812,14 @@ static int __init wake_gestures_init(void)
 		pr_err("%s: input_register_device err=%d\n", __func__, rc);
 		goto err_gesture_dev;
 	}
-#endif
 
 	android_touch_kobj = kobject_create_and_add("android_touch", NULL);
-	if (!android_touch_kobj) {
-		pr_info("fail!!!!\n");
+	if (!android_touch_kobj)
 		return -ENOMEM;
-	}
+
 	rc = sysfs_create_group(android_touch_kobj, &attr_group);
 	if (rc)
 		pr_warn("%s: sysfs_create_group failed\n", __func__);
-
-	wg_switch_temp = (s2w_switch || dt2w_switch);
-
-	return 0;
 
 err_gesture_dev:
 	input_free_device(gesture_dev);
@@ -867,14 +840,11 @@ static void __exit wake_gestures_exit(void)
 	destroy_workqueue(dt2w_input_wq);
 	input_unregister_device(wake_dev);
 	input_free_device(wake_dev);
-#if (WAKE_GESTURES_ENABLED)	
 	input_unregister_device(gesture_dev);
 	input_free_device(gesture_dev);
-#endif
 
 	return;
 }
 
 module_init(wake_gestures_init);
 module_exit(wake_gestures_exit);
-

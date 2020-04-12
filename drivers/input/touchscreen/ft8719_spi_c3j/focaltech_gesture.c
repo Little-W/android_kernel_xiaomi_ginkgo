@@ -67,6 +67,14 @@
 #define GESTURE_V                               0x54
 #define GESTURE_Z                               0x41
 #define GESTURE_C                               0x34
+#ifdef CONFIG_WAKE_GESTURES
+#include <linux/wake_gestures.h>
+static bool is_suspended;
+bool scr_suspended(void)
+{
+	return is_suspended;
+}
+#endif
 
 /*****************************************************************************
 * Private enumerations, structures and unions using typedef
