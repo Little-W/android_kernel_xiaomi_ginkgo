@@ -424,6 +424,7 @@
 #define BTN_WHEEL		0x150
 #define BTN_GEAR_DOWN		0x150
 #define BTN_GEAR_UP		0x151
+#define BTN_INFO		0x152
 
 #define KEY_OK			0x160
 #define KEY_SELECT		0x161
@@ -588,14 +589,6 @@
 #define KEY_CAMERA_DOWN		0x218
 #define KEY_CAMERA_LEFT		0x219
 #define KEY_CAMERA_RIGHT	0x21a
-#define KEY_GESTURE_C  0x21b
-#define KEY_GESTURE_LR 0x21c
-#define KEY_GESTURE_RL 0x21d
-#define KEY_GESTURE_DT 0x21e
-#define KEY_GESTURE_V  0x21f
-#define KEY_GESTURE_E  0x220
-#define KEY_GESTURE_M  0x221
-#define KEY_GESTURE_W  0x222
 
 #define KEY_ATTENDANT_ON	0x21b
 #define KEY_ATTENDANT_OFF	0x21c

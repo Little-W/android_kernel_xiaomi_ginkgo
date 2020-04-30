@@ -43,3 +43,4 @@ obj-$(CONFIG_CPU_FREQ_GOV_RENOUTIL) += cpufreq_renoutil.o
 obj-$(CONFIG_CPU_FREQ_GOV_SMURFUTIL) += cpufreq_smurfutil.o
 obj-$(CONFIG_CPU_FREQ_GOV_NUBIAUTIL) += cpufreq_nubiautil.o
 obj-$(CONFIG_CPU_FREQ_GOV_REALMEUTIL) += cpufreq_realmeutil.o
+obj-$(CONFIG_CPU_FREQ_GOV_SCHEDHORIZON) += cpufreq_schedhorizon.o

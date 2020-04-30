@@ -22,7 +22,16 @@
 #include <video/mipi_display.h>
 
 #include "dsi_panel.h"
+#include "dsi_display.h"
 #include "dsi_ctrl_hw.h"
+
+#include <linux/fs.h>
+#include <asm/uaccess.h>
+#include <asm/fcntl.h>
+
+#include <drm/drm_notifier.h>
+#include <soc/qcom/socinfo.h>
+
 #ifdef CONFIG_KLAPSE
 #include <linux/klapse.h>
 #endif
@@ -48,6 +57,16 @@ char g_lcd_id[128];
 #define MAX_PANEL_JITTER		10
 #define DEFAULT_PANEL_PREFILL_LINES	25
 #define TICKS_IN_MICRO_SECOND		1000000
+static struct dsi_panel *g_panel;
+static int panel_disp_param_send_lock(struct dsi_panel *panel, int param);
+int dsi_display_read_panel(struct dsi_panel *panel, struct dsi_read_config *read_config);
+
+enum bkl_dimming_state {
+	STATE_NONE,
+	STATE_DIM_BLOCK,
+	STATE_DIM_RESTORE,
+	STATE_ALL
+};
 
 enum dsi_dsc_ratio_type {
 	DSC_8BPC_8BPP,
@@ -327,6 +346,20 @@ static int dsi_panel_gpio_release(struct dsi_panel *panel)
 		gpio_free(panel->reset_config.lcd_mode_sel_gpio);
 
 	return rc;
+}
+
+ void drm_panel_reset_skip_enable(bool enable)
+{
+	if (g_panel)
+		g_panel->panel_reset_skip = enable;
+}
+
+ void drm_dsi_ulps_enable(bool enable)
+{
+	if (g_panel) {
+		g_panel->ulps_enabled = enable;
+		g_panel->ulps_suspend_enabled = enable;
+	}
 }
 
 int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)

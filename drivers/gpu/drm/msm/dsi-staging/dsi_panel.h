@@ -193,12 +193,16 @@ struct dsi_panel {
 
 	bool lp11_init;
 	bool ulps_feature_enabled;
+		bool ulps_enabled;
 	bool ulps_suspend_enabled;
 	bool allow_phy_power_off;
 	atomic_t esd_recovery_pending;
 
 	bool panel_initialized;
 	bool te_using_watchdog_timer;
+	bool dispparam_enabled;
+	bool on_cmds_tuning;
+	bool panel_reset_skip;
 	u32 qsync_min_fps;
 
 	char dsc_pps_cmd[DSI_CMD_PPS_SIZE];
