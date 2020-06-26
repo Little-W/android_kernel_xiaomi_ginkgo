@@ -71,7 +71,6 @@ struct schedtune {
 	 * the value when Dynamic SchedTune Boost is reset.
 	 */
 	int boost_default;
-
 	int boost_cur;
 	bool is_boosting;
 	struct work_struct dsb_work;
@@ -813,6 +812,10 @@ schedtune_css_alloc(struct cgroup_subsys_state *parent_css)
 	for (idx = 1; idx < BOOSTGROUPS_COUNT; ++idx)
 		if (!allocated_group[idx])
 			break;
+#ifdef CONFIG_STUNE_ASSIST
+		write_default_values(&allocated_group[idx]->css);
+#endif
+	}
 	if (idx == BOOSTGROUPS_COUNT) {
 		pr_err("Trying to create more than %d SchedTune boosting groups\n",
 		       BOOSTGROUPS_COUNT);
