@@ -10,6 +10,8 @@ obj-$(CONFIG_DEVFREQ_GOV_PASSIVE)	+= governor_passive.o
 obj-$(CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ) += governor_msm_adreno_tz.o
 obj-$(CONFIG_DEVFREQ_GOV_QCOM_GPUBW_MON) += governor_bw_vbif.o
 obj-$(CONFIG_DEVFREQ_GOV_QCOM_GPUBW_MON) += governor_gpubw_mon.o
+obj-$(CONFIG_SIMPLE_GPU_ALGORITHM)	+= simple_gpu_algorithm.o
+obj-$(CONFIG_ADRENO_IDLER)	+= adreno_idler.o
 obj-$(CONFIG_QCOM_BIMC_BWMON)		+= bimc-bwmon.o
 obj-$(CONFIG_ARM_MEMLAT_MON)		+= arm-memlat-mon.o
 obj-$(CONFIG_QCOMCCI_HWMON)		+= msmcci-hwmon.o
@@ -30,3 +32,6 @@ obj-$(CONFIG_DEVFREQ_SPDM)		+= devfreq_spdm.o devfreq_spdm_debugfs.o
 
 # DEVFREQ Event Drivers
 obj-$(CONFIG_PM_DEVFREQ_EVENT)		+= event/
+
+# DEVFREQ Boost
+obj-$(CONFIG_DEVFREQ_BOOST)		+= devfreq_boost.o
