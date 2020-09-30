@@ -598,6 +598,24 @@ int schedtune_task_boost(struct task_struct *p)
 	return task_boost;
 }
 
+/*  The same as schedtune_task_boost except assuming the caller has the rcu read
+ *  lock.
+ */
+int schedtune_task_boost_rcu_locked(struct task_struct *p)
+{
+	struct schedtune *st;
+	int task_boost;
+
+	if (unlikely(!schedtune_initialized))
+		return 0;
+
+	/* Get task boost value */
+	st = task_schedtune(p);
+	task_boost = st->boost;
+
+	return task_boost;
+}
+
 int schedtune_prefer_idle(struct task_struct *p)
 {
 	struct schedtune *st;
@@ -628,7 +646,7 @@ prefer_idle_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	    u64 prefer_idle)
 {
 	struct schedtune *st = css_st(css);
-	st->prefer_idle = prefer_idle;
+	st->prefer_idle = !!prefer_idle;
 
 	return 0;
 }
@@ -787,23 +805,23 @@ static struct cftype files[] = {
 	{
 		.name = "sched_boost_no_override",
 		.read_u64 = sched_boost_override_read,
-		.write_u64 = sched_boost_override_write,
+		.write_u64 = sched_boost_override_write_wrapper,
 	},
 	{
 		.name = "colocate",
 		.read_u64 = sched_colocate_read,
-		.write_u64 = sched_colocate_write,
+		.write_u64 = sched_colocate_write_wrapper,
 	},
 #endif
 	{
 		.name = "boost",
 		.read_s64 = boost_read,
-		.write_s64 = boost_write,
+		.write_s64 = boost_write_wrapper,
 	},
 	{
 		.name = "prefer_idle",
 		.read_u64 = prefer_idle_read,
-		.write_u64 = prefer_idle_write,
+		.write_u64 = prefer_idle_write_wrapper,
 	},
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	{
@@ -851,9 +869,9 @@ static void write_default_values(struct cgroup_subsys_state *css)
 	static struct st_data st_targets[] = {
 		{ "audio-app",	0, 0, 0, 0 },
 		{ "background",	0, 0, 0, 0 },
-		{ "foreground",	5, 1, 0, 1 },
+		{ "foreground",	0, 1, 0, 1 },
 		{ "rt",		0, 0, 0, 0 },
-		{ "top-app",	10, 1, 0, 1 },
+		{ "top-app",	1, 1, 0, 1 },
 	};
 	int i;
 
