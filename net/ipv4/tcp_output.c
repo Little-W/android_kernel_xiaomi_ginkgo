@@ -186,21 +186,6 @@ static inline void tcp_event_ack_sent(struct sock *sk, unsigned int pkts,
 	inet_csk_clear_xmit_timer(sk, ICSK_TIME_DACK);
 }
 
-
-u32 tcp_default_init_rwnd(u32 mss)
-{
-	/* Initial receive window should be twice of TCP_INIT_CWND to
-	 * enable proper sending of new unsent data during fast recovery
-	 * (RFC 3517, Section 4, NextSeg() rule (2)). Further place a
-	 * limit when mss is larger than 1460.
-	 */
-	u32 init_rwnd = sysctl_tcp_default_init_rwnd;
-
-	if (mss > 1460)
-		init_rwnd = max((1460 * init_rwnd) / mss, 2U);
-	return init_rwnd;
-}
-
 /* Determine a window scaling and initial window to offer.
  * Based on the assumption that the given amount of space
  * will be offered. Store the results in the tp structure.
@@ -235,7 +220,10 @@ void tcp_select_initial_window(int __space, __u32 mss,
 	if (sysctl_tcp_workaround_signed_windows)
 		(*rcv_wnd) = min(space, MAX_TCP_WINDOW);
 	else
-		(*rcv_wnd) = space;
+		(*rcv_wnd) = min_t(u32, space, U16_MAX);
+
+	if (init_rcv_wnd)
+		*rcv_wnd = min(*rcv_wnd, init_rcv_wnd * mss);
 
 	(*rcv_wscale) = 0;
 	if (wscale_ok) {
@@ -248,15 +236,6 @@ void tcp_select_initial_window(int __space, __u32 mss,
 			(*rcv_wscale)++;
 		}
 	}
-
-	if (mss > (1 << *rcv_wscale)) {
-		if (!init_rcv_wnd) /* Use default unless specified otherwise */
-			init_rcv_wnd = tcp_default_init_rwnd(mss);
-		*rcv_wnd = min(*rcv_wnd, init_rcv_wnd * mss);
-	}
-
-	/* Lock the initial TCP window size to 64K*/
-	*rcv_wnd = 64240;
 
 	/* Set the clamp no higher than max representable value */
 	(*window_clamp) = min_t(__u32, U16_MAX << (*rcv_wscale), *window_clamp);
@@ -619,7 +598,8 @@ static unsigned int tcp_synack_options(struct request_sock *req,
 				       unsigned int mss, struct sk_buff *skb,
 				       struct tcp_out_options *opts,
 				       const struct tcp_md5sig_key *md5,
-				       struct tcp_fastopen_cookie *foc)
+				       struct tcp_fastopen_cookie *foc,
+				       enum tcp_synack_type synack_type)
 {
 	struct inet_request_sock *ireq = inet_rsk(req);
 	unsigned int remaining = MAX_TCP_OPTION_SPACE;
@@ -634,7 +614,8 @@ static unsigned int tcp_synack_options(struct request_sock *req,
 		 * rather than TS in order to fit in better with old,
 		 * buggy kernels, but that was deemed to be unnecessary.
 		 */
-		ireq->tstamp_ok &= !ireq->sack_ok;
+		if (synack_type != TCP_SYNACK_COOKIE)
+			ireq->tstamp_ok &= !ireq->sack_ok;
 	}
 #endif
 
@@ -1681,8 +1662,8 @@ static bool tcp_nagle_check(bool partial, const struct tcp_sock *tp,
 /* Return how many segs we'd like on a TSO packet,
  * to send one TSO packet per ms
  */
-u32 tcp_tso_autosize(const struct sock *sk, unsigned int mss_now,
-		     int min_tso_segs)
+static u32 tcp_tso_autosize(const struct sock *sk, unsigned int mss_now,
+			    int min_tso_segs)
 {
 	u32 bytes, segs;
 
@@ -2324,7 +2305,6 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 		if (unlikely(tp->repair) && tp->repair_queue == TCP_SEND_QUEUE) {
 			/* "skb_mstamp" is used as a start point for the retransmit timer */
 			skb->skb_mstamp = tp->tcp_mstamp;
-			tcp_set_tx_in_flight(sk, skb);
 			goto repair; /* Skip network transmission */
 		}
 
@@ -2427,15 +2407,12 @@ bool tcp_schedule_loss_probe(struct sock *sk, bool advancing_rto)
 		return false;
 
 	/* Schedule a loss probe in 2*RTT for SACK capable connections
-	 * in Open state, that are either limited by cwnd or application.
+	 * not in loss recovery, that are either limited by cwnd or application.
 	 */
 	if ((sysctl_tcp_early_retrans != 3 && sysctl_tcp_early_retrans != 4) ||
 	    !tp->packets_out || !tcp_is_sack(tp) ||
-	    icsk->icsk_ca_state != TCP_CA_Open)
-		return false;
-
-	if ((tp->snd_cwnd > tcp_packets_in_flight(tp)) &&
-	     tcp_send_head(sk))
+	    (icsk->icsk_ca_state != TCP_CA_Open &&
+	     icsk->icsk_ca_state != TCP_CA_CWR))
 		return false;
 
 	/* Probe timeout is 2*rtt. Add minimum RTO to account
@@ -2489,6 +2466,11 @@ void tcp_send_loss_probe(struct sock *sk)
 	int pcount;
 	int mss = tcp_current_mss(sk);
 
+	/* At most one outstanding TLP */
+	if (tp->tlp_high_seq)
+		goto rearm_timer;
+
+	tp->tlp_retrans = 0;
 	skb = tcp_send_head(sk);
 	if (skb) {
 		if (tcp_snd_wnd_test(tp, skb, mss)) {
@@ -2511,10 +2493,6 @@ void tcp_send_loss_probe(struct sock *sk)
 		return;
 	}
 
-	/* At most one outstanding TLP retransmission. */
-	if (tp->tlp_high_seq)
-		goto rearm_timer;
-
 	if (skb_still_in_host_queue(sk, skb))
 		goto rearm_timer;
 
@@ -2535,10 +2513,12 @@ void tcp_send_loss_probe(struct sock *sk)
 	if (__tcp_retransmit_skb(sk, skb, 1))
 		goto rearm_timer;
 
+	tp->tlp_retrans = 1;
+
+probe_sent:
 	/* Record snd_nxt for loss detection. */
 	tp->tlp_high_seq = tp->snd_nxt;
 
-probe_sent:
 	NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPLOSSPROBES);
 	/* Reset s.t. tcp_rearm_rto will restart timer from now */
 	inet_csk(sk)->icsk_pending = 0;
@@ -3243,8 +3223,8 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 	md5 = tcp_rsk(req)->af_specific->req_md5_lookup(sk, req_to_sk(req));
 #endif
 	skb_set_hash(skb, tcp_rsk(req)->txhash, PKT_HASH_TYPE_L4);
-	tcp_header_size = tcp_synack_options(req, mss, skb, &opts, md5, foc) +
-			  sizeof(*th);
+	tcp_header_size = tcp_synack_options(req, mss, skb, &opts, md5,
+					     foc, synack_type) + sizeof(*th);
 
 	skb_push(skb, tcp_header_size);
 	skb_reset_transport_header(skb);

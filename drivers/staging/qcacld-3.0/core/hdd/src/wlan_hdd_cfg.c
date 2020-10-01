@@ -4636,12 +4636,6 @@ struct reg_table_entry g_registry_table[] = {
 		CFG_CRASH_FW_TIMEOUT_DEFAULT,
 		CFG_CRASH_FW_TIMEOUT_DISABLE,
 		CFG_CRASH_FW_TIMEOUT_ENABLE),
-	REG_VARIABLE(CFG_RX_WAKELOCK_TIMEOUT_NAME, WLAN_PARAM_Integer,
-		struct hdd_config, rx_wakelock_timeout,
-		VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
-		CFG_RX_WAKELOCK_TIMEOUT_DEFAULT,
-		CFG_RX_WAKELOCK_TIMEOUT_MIN,
-		CFG_RX_WAKELOCK_TIMEOUT_MAX),
 	REG_VARIABLE(CFG_SAP_CH_SWITCH_BEACON_CNT, WLAN_PARAM_Integer,
 		     struct hdd_config, sap_chanswitch_beacon_cnt,
 		     VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
@@ -7384,7 +7378,6 @@ static void hdd_cfg_print_action_oui(struct hdd_context *hdd_ctx)
 {
 #ifdef WLAN_DEBUG
 	struct hdd_config *config = hdd_ctx->config;
-#endif
 
 	hdd_debug("Name = [%s] value = [%u]",
 		  CFG_ENABLE_ACTION_OUI,
@@ -7421,6 +7414,7 @@ static void hdd_cfg_print_action_oui(struct hdd_context *hdd_ctx)
 	hdd_debug("Name = [%s] value = [%s]",
 		  CFG_ACTION_OUI_DISABLE_AGGRESSIVE_EDCA,
 		  config->action_oui_str[ACTION_OUI_DISABLE_AGGRESSIVE_EDCA]);
+#endif
 }
 
 /**
@@ -9161,8 +9155,16 @@ static bool hdd_update_vht_cap_in_cfg(struct hdd_context *hdd_ctx)
 		hdd_err("Couldn't pass on WNI_CFG_VHT_RXSTBC to CFG");
 	}
 
+	/* first get HW TX STBC capability */
+	if (sme_cfg_get_int(mac_handle, WNI_CFG_VHT_TXSTBC, &val) ==
+							QDF_STATUS_E_FAILURE) {
+		status = false;
+		hdd_err("Could not get WNI_CFG_VHT_TXSTBC");
+	}
+
+	/* set TX STBC combined with ini setting capability */
 	if (sme_cfg_set_int(mac_handle, WNI_CFG_VHT_TXSTBC,
-			    config->enableTxSTBC) == QDF_STATUS_E_FAILURE) {
+			    config->enableTxSTBC && val) == QDF_STATUS_E_FAILURE) {
 		status = false;
 		hdd_err("Couldn't pass on WNI_CFG_VHT_TXSTBC to CFG");
 	}

@@ -5999,7 +5999,6 @@ QDF_STATUS sme_get_cfg_valid_channels(uint8_t *aValidChannels,
 	return status;
 }
 
-#ifdef WLAN_DEBUG
 static uint8_t *sme_reg_hint_to_str(const enum country_src src)
 {
 	switch (src) {
@@ -6019,7 +6018,6 @@ static uint8_t *sme_reg_hint_to_str(const enum country_src src)
 		return "unknown";
 	}
 }
-#endif
 
 void sme_set_cc_src(tHalHandle hHal, enum country_src cc_src)
 {
@@ -13573,21 +13571,14 @@ QDF_STATUS sme_set_rssi_monitoring(tHalHandle hal,
 static enum band_info sme_get_connected_roaming_vdev_band(void)
 {
 	enum band_info band = BAND_ALL;
-	tpAniSirGlobal mac = sme_get_mac_context();
-	struct csr_roam_session *session;
-	uint8_t session_id, channel;
+	tp_wma_handle wma_handle;
+	uint8_t channel;
 
-	if (!mac) {
-		sme_debug("MAC Context is NULL");
-		return band;
-	}
-	session_id = csr_get_roam_enabled_sta_sessionid(mac);
-	if (session_id != CSR_SESSION_ID_INVALID) {
-		session = CSR_GET_SESSION(mac, session_id);
-		channel = session->connectedProfile.operationChannel;
-		band = csr_get_rf_band(channel);
-		return band;
-	}
+	wma_handle = cds_get_context(QDF_MODULE_ID_WMA);
+	if (!wma_handle)
+		sme_err("Invalid wma handle");
+	channel = wma_get_vdev_chan_roam_enabled(wma_handle);
+	band = csr_get_rf_band(channel);
 
 	return band;
 }

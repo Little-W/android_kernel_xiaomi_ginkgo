@@ -634,7 +634,8 @@ void lim_cleanup(tpAniSirGlobal pMac)
 	/* Now, finally reset the deferred message queue pointers */
 	lim_reset_deferred_msg_q(pMac);
 
-	rrm_cleanup(pMac);
+	for (i = 0; i < MAX_MEASUREMENT_REQUEST; i++)
+		rrm_cleanup(pMac, i);
 
 	lim_ft_cleanup_all_ft_sessions(pMac);
 
@@ -2849,6 +2850,7 @@ void lim_update_lost_link_info(tpAniSirGlobal mac, tpPESession session,
 	lim_sys_process_mmh_msg_api(mac, &mmh_msg, ePROT);
 }
 
+#ifdef TRACE_RECORD
 QDF_STATUS pe_acquire_global_lock(tAniSirLim *psPe)
 {
 	QDF_STATUS status = QDF_STATUS_E_INVAL;
@@ -2861,6 +2863,7 @@ QDF_STATUS pe_acquire_global_lock(tAniSirLim *psPe)
 	}
 	return status;
 }
+#endif
 
 QDF_STATUS pe_release_global_lock(tAniSirLim *psPe)
 {

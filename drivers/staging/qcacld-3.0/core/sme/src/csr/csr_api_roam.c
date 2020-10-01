@@ -7965,8 +7965,10 @@ static void csr_roam_process_start_bss_success(tpAniSirGlobal mac_ctx,
 	tDot11fBeaconIEs *ies_ptr = NULL;
 	tSirMacAddr bcast_mac = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 	QDF_STATUS status;
+#ifdef FEATURE_WLAN_DIAG_SUPPORT_CSR
 	host_log_ibss_pkt_type *ibss_log;
 	uint32_t bi;
+#endif
 #ifdef FEATURE_WLAN_MCC_TO_SCC_SWITCH
 	tSirSmeHTProfile *src_profile = NULL;
 	tCsrRoamHTProfile *dst_profile = NULL;
@@ -8759,7 +8761,9 @@ static bool csr_roam_process_results(tpAniSirGlobal mac_ctx, tSmeCmd *cmd,
 	struct csr_roam_profile *profile = &cmd->u.roamCmd.roamProfile;
 	eRoamCmdStatus roam_status;
 	eCsrRoamResult roam_result;
+#ifdef FEATURE_WLAN_DIAG_SUPPORT_CSR
 	host_log_ibss_pkt_type *ibss_log;
+#endif
 	tSirSmeStartBssRsp  *start_bss_rsp = NULL;
 
 	if (!session) {
@@ -14133,6 +14137,7 @@ static QDF_STATUS csr_roam_start_wait_for_key_timer(
 	if (csr_neighbor_roam_is_handoff_in_progress(pMac,
 				     pMac->roam.WaitForKeyTimerInfo.
 				     vdev_id)) {
+#ifdef WLAN_DEBUG
 		/* Disable heartbeat timer when hand-off is in progress */
 		sme_debug("disabling HB timer in state: %s sub-state: %s",
 			mac_trace_get_neighbour_roam_state(
@@ -14140,6 +14145,7 @@ static QDF_STATUS csr_roam_start_wait_for_key_timer(
 			mac_trace_getcsr_roam_sub_state(
 				pMac->roam.curSubState[pMac->roam.
 					WaitForKeyTimerInfo.vdev_id]));
+#endif
 		cfg_set_int(pMac, WNI_CFG_HEART_BEAT_THRESHOLD, 0);
 	}
 	sme_debug("csrScanStartWaitForKeyTimer");
@@ -14155,7 +14161,6 @@ QDF_STATUS csr_roam_stop_wait_for_key_timer(tpAniSirGlobal pMac)
 	tpCsrNeighborRoamControlInfo pNeighborRoamInfo =
 		&pMac->roam.neighborRoamInfo[pMac->roam.WaitForKeyTimerInfo.
 					     vdev_id];
-#endif
 
 	sme_debug("WaitForKey timer stopped in state: %s sub-state: %s",
 		mac_trace_get_neighbour_roam_state(pNeighborRoamInfo->
@@ -14164,6 +14169,8 @@ QDF_STATUS csr_roam_stop_wait_for_key_timer(tpAniSirGlobal pMac)
 						curSubState[pMac->roam.
 							    WaitForKeyTimerInfo.
 							    vdev_id]));
+#endif
+
 	if (csr_neighbor_roam_is_handoff_in_progress(pMac,
 				pMac->roam.WaitForKeyTimerInfo.vdev_id)) {
 		/*
@@ -16009,63 +16016,40 @@ void csr_clear_sae_single_pmk(tpAniSirGlobal pMac, uint8_t vdev_id,
 #endif
 
 void csr_roam_del_pmk_cache_entry(struct csr_roam_session *session,
-				  tPmkidCacheInfo *cached_pmksa)
+				  tPmkidCacheInfo *cached_pmksa, u32 del_idx)
 {
 	u32 curr_idx;
-	u8 del_pmk[CSR_RSN_MAX_PMK_LEN] = {0};
-	u32 i, del_idx;
+	u32 i;
 
-	/* copy the PMK of matched BSSID */
-	qdf_mem_copy(del_pmk, cached_pmksa->pmk, cached_pmksa->pmk_len);
-
-	/* Search for matching PMK in session PMK cache */
-	for (del_idx = 0; del_idx != session->NumPmkidCache; del_idx++) {
-		cached_pmksa = &session->PmkidCacheInfo[del_idx];
-		if (cached_pmksa->pmk_len && (!qdf_mem_cmp
-		    (cached_pmksa->pmk, del_pmk, cached_pmksa->pmk_len))) {
-			/* Clear this - matched entry */
-			qdf_mem_zero(cached_pmksa, sizeof(tPmkidCacheInfo));
-
-			/* Match Found, Readjust the other entries */
-			curr_idx = session->curr_cache_idx;
-			if (del_idx < curr_idx) {
-				for (i = del_idx; i < (curr_idx - 1); i++) {
-					qdf_mem_copy(&session->
-						     PmkidCacheInfo[i],
-						     &session->
-						     PmkidCacheInfo[i + 1],
-						     sizeof(tPmkidCacheInfo));
-				}
-
-				session->curr_cache_idx--;
-				qdf_mem_zero(&session->PmkidCacheInfo
-					     [session->curr_cache_idx],
-					     sizeof(tPmkidCacheInfo));
-			} else if (del_idx > curr_idx) {
-				for (i = del_idx; i > (curr_idx); i--) {
-					qdf_mem_copy(&session->
-						     PmkidCacheInfo[i],
-						     &session->
-						     PmkidCacheInfo[i - 1],
-						     sizeof(tPmkidCacheInfo));
-				}
-
-				qdf_mem_zero(&session->PmkidCacheInfo
-					     [session->curr_cache_idx],
-					     sizeof(tPmkidCacheInfo));
-			}
-
-			/* Decrement the count since an entry is been deleted */
-			session->NumPmkidCache--;
-			sme_debug("PMKID at index=%d deleted, current index=%d cache count=%d",
-				  del_idx, session->curr_cache_idx,
-				  session->NumPmkidCache);
-			/* As we re-adjusted entries by one position search
-			 * again from current index
-			 */
-			del_idx--;
+	/* Clear this - matched entry */
+	qdf_mem_zero(cached_pmksa, sizeof(tPmkidCacheInfo));
+	/* Match Found, Readjust the other entries */
+	curr_idx = session->curr_cache_idx;
+	if (del_idx < curr_idx) {
+		for (i = del_idx; i < (curr_idx - 1); i++) {
+			qdf_mem_copy(&session->PmkidCacheInfo[i],
+				     &session->PmkidCacheInfo[i + 1],
+				     sizeof(tPmkidCacheInfo));
 		}
+
+		session->curr_cache_idx--;
+		qdf_mem_zero(&session->PmkidCacheInfo[session->curr_cache_idx],
+			     sizeof(tPmkidCacheInfo));
+	} else if (del_idx > curr_idx) {
+		for (i = del_idx; i > (curr_idx); i--) {
+			qdf_mem_copy(&session->PmkidCacheInfo[i],
+				     &session->PmkidCacheInfo[i - 1],
+				     sizeof(tPmkidCacheInfo));
+		}
+
+		qdf_mem_zero(&session->PmkidCacheInfo[session->curr_cache_idx],
+			     sizeof(tPmkidCacheInfo));
 	}
+
+	/* Decrement the count since an entry is been deleted */
+	session->NumPmkidCache--;
+	sme_debug("PMKID at index=%d deleted, current index=%d cache count=%d",
+		  del_idx, session->curr_cache_idx, session->NumPmkidCache);
 }
 
 QDF_STATUS csr_roam_del_pmkid_from_cache(tpAniSirGlobal pMac,
@@ -16077,6 +16061,9 @@ QDF_STATUS csr_roam_del_pmkid_from_cache(tpAniSirGlobal pMac,
 	bool fMatchFound = false;
 	uint32_t Index;
 	tPmkidCacheInfo *cached_pmksa;
+	u32 del_idx;
+	u8 del_pmk[CSR_RSN_MAX_PMK_LEN] = {0};
+
 
 	if (!pSession) {
 		sme_err("session %d not found", sessionId);
@@ -16118,8 +16105,35 @@ QDF_STATUS csr_roam_del_pmkid_from_cache(tpAniSirGlobal pMac,
 			fMatchFound = 1;
 
 		if (fMatchFound) {
-			/* Delete the matched PMK cache entry */
-			csr_roam_del_pmk_cache_entry(pSession, cached_pmksa);
+			/* copy the PMK of matched BSSID */
+			qdf_mem_copy(del_pmk, cached_pmksa->pmk,
+				     cached_pmksa->pmk_len);
+
+			/* Free the matched entry to address null pmk_len case*/
+			csr_roam_del_pmk_cache_entry(pSession, cached_pmksa,
+						     Index);
+
+			/* Search for matching PMK in session PMK cache */
+			for (del_idx = 0; del_idx != pSession->NumPmkidCache;
+			     del_idx++) {
+				cached_pmksa =
+					&pSession->PmkidCacheInfo[del_idx];
+				if (cached_pmksa->pmk_len && (!qdf_mem_cmp
+				    (cached_pmksa->pmk, del_pmk,
+				    cached_pmksa->pmk_len))) {
+					/* Delete the matched PMK cache entry */
+					csr_roam_del_pmk_cache_entry(
+						pSession, cached_pmksa,
+						del_idx);
+					/* Search again from current index as we
+					 * re-adjusted entries by one position
+					 */
+					del_idx--;
+				}
+			}
+			/* reset stored pmk */
+			qdf_mem_zero(del_pmk, CSR_RSN_MAX_PMK_LEN);
+
 			break;
 		}
 	}

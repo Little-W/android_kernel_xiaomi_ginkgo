@@ -5116,9 +5116,7 @@ static int __wlan_hdd_cfg80211_disable_dfs_chan_scan(struct wiphy *wiphy,
 						     const void *data,
 						     int data_len)
 {
-#ifdef WLAN_DEBUG
 	struct net_device *dev = wdev->netdev;
-#endif
 	struct hdd_context *hdd_ctx  = wiphy_priv(wiphy);
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_SET_NO_DFS_FLAG_MAX + 1];
 	int ret_val;
@@ -7761,6 +7759,28 @@ static int hdd_config_disconnect_ies(struct hdd_adapter *adapter,
 	return qdf_status_to_os_return(status);
 }
 
+#if defined(CLD_PM_QOS) && defined(WLAN_FEATURE_LL_MODE)
+void wlan_hdd_set_wlm_mode(struct hdd_context *hdd_ctx, uint16_t latency_level)
+{
+	if (latency_level ==
+	    QCA_WLAN_VENDOR_ATTR_CONFIG_LATENCY_LEVEL_ULTRALOW) {
+		hdd_ctx->llm_enabled = true;
+		if (!hdd_ctx->hbw_requested) {
+			pm_qos_update_request(&hdd_ctx->pm_qos_req,
+					      DISABLE_KRAIT_IDLE_PS_VAL);
+			hdd_ctx->hbw_requested = true;
+		}
+	} else {
+		if (hdd_ctx->hbw_requested) {
+			pm_qos_update_request(&hdd_ctx->pm_qos_req,
+					      PM_QOS_DEFAULT_VALUE);
+			hdd_ctx->hbw_requested = false;
+		}
+		hdd_ctx->llm_enabled = false;
+	}
+}
+#endif
+
 /**
  * __wlan_hdd_cfg80211_wifi_configuration_set() - Wifi configuration
  * vendor command
@@ -8317,6 +8337,8 @@ __wlan_hdd_cfg80211_wifi_configuration_set(struct wiphy *wiphy,
 			hdd_err("Invalid Wlan latency level value");
 			return -EINVAL;
 		}
+
+		wlan_hdd_set_wlm_mode(hdd_ctx, latency_level);
 
 		/* Mapping the latency value to the level which fw expected
 		 * 0 - normal, 1 - moderate, 2 - low, 3 - ultralow
@@ -12848,6 +12870,8 @@ static void hdd_sar_safety_timer_cb(void *user_data)
 
 void wlan_hdd_sar_unsolicited_timer_start(struct hdd_context *hdd_ctx)
 {
+	QDF_STATUS status;
+
 	if (!hdd_ctx->config->enable_sar_safety)
 		return;
 
@@ -12857,14 +12881,20 @@ void wlan_hdd_sar_unsolicited_timer_start(struct hdd_context *hdd_ctx)
 
 	if (QDF_TIMER_STATE_RUNNING !=
 		qdf_mc_timer_get_current_state(
-				&hdd_ctx->sar_safety_unsolicited_timer))
-		qdf_mc_timer_start(
+				&hdd_ctx->sar_safety_unsolicited_timer)) {
+		status = qdf_mc_timer_start(
 			&hdd_ctx->sar_safety_unsolicited_timer,
 			hdd_ctx->config->sar_safety_unsolicited_timeout);
+
+		if (QDF_IS_STATUS_SUCCESS(status))
+			hdd_nofl_debug("sar unsolicited timer started");
+	}
 }
 
 void wlan_hdd_sar_timers_reset(struct hdd_context *hdd_ctx)
 {
+	QDF_STATUS status;
+
 	if (!hdd_ctx->config->enable_sar_safety)
 		return;
 
@@ -12872,16 +12902,26 @@ void wlan_hdd_sar_timers_reset(struct hdd_context *hdd_ctx)
 		return;
 
 	if (QDF_TIMER_STATE_RUNNING ==
-		qdf_mc_timer_get_current_state(&hdd_ctx->sar_safety_timer))
-		qdf_mc_timer_stop(&hdd_ctx->sar_safety_timer);
+		qdf_mc_timer_get_current_state(&hdd_ctx->sar_safety_timer)) {
+		status =  qdf_mc_timer_stop(&hdd_ctx->sar_safety_timer);
+		if (QDF_IS_STATUS_SUCCESS(status))
+			hdd_nofl_debug("sar safety timer stopped");
+		}
 
-	qdf_mc_timer_start(&hdd_ctx->sar_safety_timer,
-			   hdd_ctx->config->sar_safety_timeout);
+	status = qdf_mc_timer_start(
+			&hdd_ctx->sar_safety_timer,
+			hdd_ctx->config->sar_safety_timeout);
+	if (QDF_IS_STATUS_SUCCESS(status))
+		hdd_nofl_debug("sar safety timer started");
 
 	if (QDF_TIMER_STATE_RUNNING ==
 		qdf_mc_timer_get_current_state(
-				&hdd_ctx->sar_safety_unsolicited_timer))
-		qdf_mc_timer_stop(&hdd_ctx->sar_safety_unsolicited_timer);
+				&hdd_ctx->sar_safety_unsolicited_timer)) {
+		status = qdf_mc_timer_stop(
+				&hdd_ctx->sar_safety_unsolicited_timer);
+		if (QDF_IS_STATUS_SUCCESS(status))
+			hdd_nofl_debug("sar unsolicited timer stopped");
+	}
 
 	qdf_event_set(&hdd_ctx->sar_safety_req_resp_event);
 }
@@ -12890,6 +12930,8 @@ void wlan_hdd_sar_timers_init(struct hdd_context *hdd_ctx)
 {
 	if (!hdd_ctx->config->enable_sar_safety)
 		return;
+
+	hdd_enter();
 
 	qdf_mc_timer_init(&hdd_ctx->sar_safety_timer, QDF_TIMER_TYPE_SW,
 			  hdd_sar_safety_timer_cb, hdd_ctx);
@@ -12901,12 +12943,15 @@ void wlan_hdd_sar_timers_init(struct hdd_context *hdd_ctx)
 	qdf_atomic_init(&hdd_ctx->sar_safety_req_resp_event_in_progress);
 	qdf_event_create(&hdd_ctx->sar_safety_req_resp_event);
 
+	hdd_exit();
 }
 
 void wlan_hdd_sar_timers_deinit(struct hdd_context *hdd_ctx)
 {
 	if (!hdd_ctx->config->enable_sar_safety)
 		return;
+
+	hdd_enter();
 
 	if (QDF_TIMER_STATE_RUNNING ==
 		qdf_mc_timer_get_current_state(&hdd_ctx->sar_safety_timer))
@@ -12922,6 +12967,8 @@ void wlan_hdd_sar_timers_deinit(struct hdd_context *hdd_ctx)
 	qdf_mc_timer_destroy(&hdd_ctx->sar_safety_unsolicited_timer);
 
 	qdf_event_destroy(&hdd_ctx->sar_safety_req_resp_event);
+
+	hdd_exit();
 }
 #endif
 
@@ -21916,18 +21963,17 @@ int wlan_hdd_disconnect(struct hdd_adapter *adapter, u16 reason,
  */
 static void hdd_print_netdev_txq_status(struct net_device *dev)
 {
+#ifdef WLAN_DEBUG
 	unsigned int i;
 
 	if (!dev)
 		return;
 
 	for (i = 0; i < dev->num_tx_queues; i++) {
-#ifdef WLAN_DEBUG
 		struct netdev_queue *txq = netdev_get_tx_queue(dev, i);
-#endif
-
 		hdd_debug("netdev tx queue[%u] state: 0x%lx", i, txq->state);
 	}
+#endif
 }
 
 /**
