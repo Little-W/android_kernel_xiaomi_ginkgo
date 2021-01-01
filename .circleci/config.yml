@@ -1,0 +1,11 @@
+version: 2.1
+jobs:
+  build:
+    docker:
+      - image: 1405481963/ubuntu:latest
+    steps:
+      - run: git clone --depth 1  "https://github.com/Little-W/ginkgo_kernel_main_test" --branch "$CIRCLE_BRANCH" .
+      - run: git clone --depth 1 https://github.com/kdrag0n/proton-clang /proton
+      - run: git clone https://github.com/Little-W/redentials.git /re
+      - run: curl -OsSL https://raw.githubusercontent.com/Little-W/build/main/build.sh
+      - run: bash build.sh
