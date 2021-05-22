@@ -14,7 +14,7 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
     - name: Install Deps
-      run: curl -OsSL https://raw.githubusercontent.com/Little-W/scripts/master/environment.sh && bash environment.sh 
+      run: curl -OsSL https://raw.githubusercontent.com/Little-W/scripts/master/env_no_swap && bash env_no_swap
     - name: Build
       run: curl -OsSL https://raw.githubusercontent.com/Little-W/scripts/master/build.sh && bash build.sh
     - name: Upload 
