@@ -1,0 +1,21 @@
+  
+name: Build test
+on:
+  push:
+    branches:
+      - test
+jobs:
+  build-test:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.5.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+    - name: Install Deps
+      run: curl -OsSL https://raw.githubusercontent.com/Little-W/scripts/master/environment.sh && bash environment.sh 
+    - name: Build
+      run: curl -OsSL https://raw.githubusercontent.com/Little-W/scripts/master/build.sh && bash build.sh
+    - name: Upload 
+      run: curl -OsSL https://raw.githubusercontent.com/Little-W/scripts/master/upload_ssh && bash upload_ssh
